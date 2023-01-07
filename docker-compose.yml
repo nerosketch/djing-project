@@ -1,0 +1,238 @@
+version: '3.5'
+services:
+  djing2db:
+    image: postgres:13.4-alpine
+    user: postgres
+    working_dir: /var/lib/postgresql
+    secrets:
+      - POSTGRES_PASSWORD
+    stdin_open: true
+    tty: true
+    restart: always
+    volumes:
+      - postgresql-data:/var/lib/postgresql/data
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      - POSTGRES_PASSWORD_FILE=/run/secrets/POSTGRES_PASSWORD
+      - POSTGRES_DB
+      - POSTGRES_USER
+      - POSTGRES_HOST
+    command: ["postgres", "-c", "shared_buffers=16GB", "-c", "wal_buffers=64MB"]
+  pgbouncer:
+    image: nerosketch/djing2-pgbouncer
+    environment:
+      - POSTGRES_PASSWORD_FILE=/run/secrets/POSTGRES_PASSWORD
+      - POSTGRES_DB
+      - POSTGRES_USER
+      - POSTGRES_HOST
+    secrets:
+      - POSTGRES_PASSWORD
+    depends_on:
+      - djing2db
+    logging:
+      options:
+        max-size: 50m
+  djing2redis:
+    image: redis:alpine
+  djing2rabbitmq:
+    image: rabbitmq:alpine
+    environment:
+      - RABBITMQ_DEFAULT_USER=user
+      - RABBITMQ_DEFAULT_PASS=passw
+  djing2_app:
+    image: nerosketch/djing2_app:latest
+#   container_name: djing2_app_prod
+    depends_on:
+      - djing2db
+    restart: always
+    stdin_open: true
+    tty: true
+    secrets:
+      - POSTGRES_PASSWORD
+      - DJANGO_SECRET_KEY
+      - VAPID_PUBLIC_KEY
+      - VAPID_PRIVATE_KEY
+      - FIELD_ENCRYPTION_KEY
+      - API_AUTH_SECRET
+      - RADIUS_SECRET
+      - SORM_EXPORT_FTP_PASSWORD
+      - PAYME_CREDENTIALS
+    environment:
+      - POSTGRES_PASSWORD_FILE=/run/secrets/POSTGRES_PASSWORD
+      #- APP_DEBUG
+      - RADIUS_APP_HOST
+      - POSTGRES_DB
+      - POSTGRES_USER
+      - POSTGRES_HOST
+      - POSTGRES_PORT
+      - API_AUTH_SUBNET
+      - MESSENGER_BOT_PUBLIC_URL
+      - SORM_EXPORT_FTP_HOST
+      - SORM_EXPORT_FTP_USERNAME
+      - SORM_EXPORT_FTP_DISABLE
+      - ALLOWED_HOSTS
+      - SECRETS_DIR_PATH
+      - CUSTOMERS_PASSPORT_DEFAULT_DISTRIBUTOR
+      - DJANGO_LOG_LEVEL=WARNING
+      - CELERY_BROKER_URL
+      - INSTALLED_APPS_ADDITIONAL
+    volumes:
+      - media-data:/var/www/djing2/media
+      - /etc/localtime:/etc/localtime:ro
+      - /tmp:/tmp
+    logging:
+      options:
+        max-size: 50m
+
+  djing2-front:
+    image: nerosketch/djing2-front:latest
+    depends_on:
+      - djing2_app
+    ports:
+      - 80:80
+      - 443:443
+    stdin_open: true
+    tty: true
+    environment:
+      - NGINX_PORT=80
+      - DEFAULT_LANG
+      - DOMAINS
+      - EMAIL4LETSENCRYPT
+      - RSA_KEY_SIZE
+      - DEBUG
+      - STAGING
+    tmpfs:
+      - /tmp
+    volumes:
+      - media-data:/var/www/media:ro
+      - nginx_logs:/var/log/nginx
+      - nginx-cert-live:/etc/letsencrypt/live
+      - nginx-cert-archive:/etc/letsencrypt/archive
+      - /etc/localtime:/etc/localtime:ro
+      - ./nginx/confs:/etc/nginx/conf.d
+    logging:
+      options:
+        max-size: 50m
+
+  ws:
+     image: nerosketch/djing2-ws:latest
+
+  djing2celery:
+    image: nerosketch/djing2_app:latest
+    working_dir: /var/www/djing2/apps
+    command: celery -A djing2.celery_app worker --loglevel=WARNING -E --concurrency 1
+    depends_on:
+      - djing2db
+#      - djing2redis
+      - djing2rabbitmq
+    restart: always
+    stdin_open: true
+    tty: true
+    secrets:
+      - POSTGRES_PASSWORD
+      - DJANGO_SECRET_KEY
+      - VAPID_PUBLIC_KEY
+      - VAPID_PRIVATE_KEY
+      - FIELD_ENCRYPTION_KEY
+      - API_AUTH_SECRET
+      - RADIUS_SECRET
+      - SORM_EXPORT_FTP_PASSWORD
+      - PAYME_CREDENTIALS
+    environment:
+      - POSTGRES_PASSWORD_FILE=/run/secrets/POSTGRES_PASSWORD
+      #- APP_DEBUG
+      - RADIUS_APP_HOST
+      - POSTGRES_DB
+      - POSTGRES_USER
+      - POSTGRES_HOST
+      - API_AUTH_SUBNET
+      - MESSENGER_BOT_PUBLIC_URL
+      - SORM_EXPORT_FTP_HOST
+      - SORM_EXPORT_FTP_USERNAME
+      - SORM_EXPORT_FTP_DISABLE
+      - ALLOWED_HOSTS
+      - SECRETS_DIR_PATH
+      - CUSTOMERS_PASSPORT_DEFAULT_DISTRIBUTOR
+      - GRAPHITE_HOST
+      - GRAPHITE_PORT
+      - DJANGO_LOG_LEVEL=WARNING
+      - CELERY_BROKER_URL
+      - INSTALLED_APPS_ADDITIONAL
+    volumes:
+      - media-data:/var/www/djing2/media
+      - /etc/localtime:/etc/localtime:ro
+      - /tmp:/tmp
+
+  djing2celerybeat:
+    image: nerosketch/djing2_app:latest
+    working_dir: /var/www/djing2/apps
+    command: celery -A djing2.celery_app beat --loglevel=WARNING -s /tmp/celerybeat-schedule
+    depends_on:
+      - djing2celery
+    restart: always
+    stdin_open: true
+    tty: true
+    secrets:
+      - POSTGRES_PASSWORD
+      - DJANGO_SECRET_KEY
+      - VAPID_PUBLIC_KEY
+      - VAPID_PRIVATE_KEY
+      - FIELD_ENCRYPTION_KEY
+      - API_AUTH_SECRET
+      - RADIUS_SECRET
+      - SORM_EXPORT_FTP_PASSWORD
+      - PAYME_CREDENTIALS
+    environment:
+      - POSTGRES_PASSWORD_FILE=/run/secrets/POSTGRES_PASSWORD
+      #- APP_DEBUG
+      - RADIUS_APP_HOST
+      - POSTGRES_DB
+      - POSTGRES_USER
+      - POSTGRES_HOST
+      - API_AUTH_SUBNET
+      - MESSENGER_BOT_PUBLIC_URL
+      - SORM_EXPORT_FTP_HOST
+      - SORM_EXPORT_FTP_USERNAME
+      - SORM_EXPORT_FTP_DISABLE
+      - ALLOWED_HOSTS
+      - SECRETS_DIR_PATH
+      - CUSTOMERS_PASSPORT_DEFAULT_DISTRIBUTOR
+      - GRAPHITE_HOST
+      - GRAPHITE_PORT
+      - DJANGO_LOG_LEVEL=WARNING
+      - CELERY_BROKER_URL
+      - INSTALLED_APPS_ADDITIONAL
+    tmpfs:
+      - /tmp
+    volumes:
+      - media-data:/var/www/djing2/media
+      - /etc/localtime:/etc/localtime:ro
+
+
+volumes:
+  postgresql-data:
+  media-data:
+  nginx_logs:
+  nginx-cert-live:
+  nginx-cert-archive:
+
+
+secrets:
+  POSTGRES_PASSWORD:
+    file: ./secrets/POSTGRES_PASSWORD
+  DJANGO_SECRET_KEY:
+    file: ./secrets/DJANGO_SECRET_KEY
+  API_AUTH_SECRET:
+    file: ./secrets/API_AUTH_SECRET
+  FIELD_ENCRYPTION_KEY:
+    file: ./secrets/FIELD_ENCRYPTION_KEY
+  VAPID_PUBLIC_KEY:
+    file: ./secrets/VAPID_PUBLIC_KEY
+  VAPID_PRIVATE_KEY:
+    file: ./secrets/VAPID_PRIVATE_KEY
+  RADIUS_SECRET:
+    file: ./secrets/RADIUS_SECRET
+  SORM_EXPORT_FTP_PASSWORD:
+    file: ./secrets/SORM_EXPORT_FTP_PASSWORD
+  PAYME_CREDENTIALS:
+    file: ./secrets/PAYME_CREDENTIALS

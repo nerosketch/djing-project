@@ -1,0 +1,86 @@
+version: '3.5'
+services:
+  djing2db:
+    restart: on-failure
+    #volumes:
+    #  - /tmp:/tmp
+    #  - type: tmpfs
+    #    target: /var/lib/postgresql/data
+    #    volume:
+    #      nocopy: true
+    #    tmpfs:
+    #      size: 104857600
+    ports:
+      - 5432:5432
+    #command: ["postgres", "-c", "log_statement=all", "-c", "shared_buffers=500MB", "-c", "fsync=off"]
+    command: ["postgres", "-c", "shared_buffers=500MB", "-c", "fsync=off"]
+
+  djing2rabbitmq:
+    ports:
+      - 5672:5672
+
+  djing2_app:
+    environment:
+      - APP_DEBUG=y
+      - DJANGO_LOG_LEVEL
+    ports:
+      - 8000:8000
+    volumes:
+      - ./djing2:/var/www/djing2
+    #networks: app_net_backend
+    command: uvicorn fastapi_app:app --host 0.0.0.0 --port 8000 --reload
+
+  djing2-ui:
+    image: nerosketch/djing2-frontapp:latest
+    build:
+      context: djing2-elui/
+      target: uidevel
+    stop_grace_period: 1m
+    depends_on:
+      - djing2_app
+    ports:
+      - 8080:8080
+    environment:
+      - PORT=8080
+    stdin_open: true
+    tty: true
+    volumes:
+      - ./djing2-elui/src:/home/node/app/src
+      - /etc/localtime:/etc/localtime:ro
+
+  djing2-lk:
+    image: nerosketch/djing2_lk:latest
+    build:
+      context: djing-lk/
+      target: lkdevel
+    stop_grace_period: 1m
+    stdin_open: true
+    tty: true
+    ports:
+      - 8082:8082
+    environment:
+      - VUE_APP_BASE_API=http://localhost:8000/api
+    volumes:
+      - ./djing-lk:/home/node/app
+      - /etc/localtime:/etc/localtime:ro
+
+  djing2celery:
+    environment:
+      - APP_DEBUG=y
+      - DJANGO_LOG_LEVEL=DEBUG
+    volumes:
+      - ./djing2:/var/www/djing2
+    command: celery -A djing2.celery_app worker --loglevel=WARNING -E --concurrency 1
+
+  djing2celerybeat:
+    environment:
+      - APP_DEBUG=y
+      - DJANGO_LOG_LEVEL=DEBUG
+    volumes:
+      - ./djing2:/var/www/djing2
+    command: celery -A djing2.celery_app beat --loglevel=DEBUG -s /tmp/celerybeat-schedule
+
+
+volumes:
+  media-data:
+  postgresql-data:

@@ -1,0 +1,9 @@
+venv/
+secrets/
+.env
+.git/
+.gitignore
+.gitmodules
+.idea/
+nginx/cert/
+nginx/confs/
