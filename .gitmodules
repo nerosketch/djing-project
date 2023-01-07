@@ -1,0 +1,6 @@
+[submodule "djing2"]
+	path = djing2
+	url = git@github.com:nerosketch/djing2.git
+[submodule "djing2-elui"]
+	path = djing2-elui
+	url = git@github.com:nerosketch/djing2-elui.git
